@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Panel de Administración - Salón de Eventos</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f9f9f9; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: #333; }
+    button, select, input {
+      padding: 8px 12px;
+      margin: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    .form-section {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .form-section.visible { display: block; }
+    .estado.pendiente { background-color: #fff3cd; }
+    .estado.confirmada { background-color: #d4edda; }
+    .estado.cancelada { background-color: #f8d7da; }
+    label { display: inline-block; width: 150px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Panel de Gestión de Reservas</h1>
+
+    <!-- Botón para abrir formulario -->
+    <button id="toggleFormBtn">➕ Nueva Reserva</button>
+    <div id="mensajeGlobal" style="margin: 10px 0; color: green; font-weight: bold;"></div>
+    
+
+    <!-- Filtro por fechas -->
+	<div style="margin: 15px 0; padding: 10px; background: #f0f0f0; border-radius: 6px;">
+  		<h4>Filtrar por fecha</h4>
+  		<label for="filtroDesde">Desde:</label>
+  		<input type="date" id="filtroDesde" />
+  
+  		<label for="filtroHasta">Hasta:</label>
+  		<input type="date" id="filtroHasta" />
+  
+  		<button id="btnFiltrar">🔍 Filtrar</button>
+  		<button id="btnLimpiarFiltro">🗑️ Limpiar</button>
+	  </div>
+      <button id="btnEstadisticas" style="margin-top: 10px;">📊 Mostrar Estadísticas</button>
+        <div id="panelEstadisticas" style="display:none; margin-top: 15px; padding: 15px; background:#e9f7ef; border-radius:8px;">
+          <h4>Estadísticas del período seleccionado</h4>
+          <p><strong>Total de reservas:</strong> <span id="totalReservas">0</span></p>
+        <div id="estadosStats"></div>
+    </div>
+    <!-- Formulario de nueva reserva (oculto por defecto) -->
+    <div id="nuevaReservaForm" class="form-section">
+      <h3>Agregar Nueva Reserva</h3>
+      <form id="formularioNueva">
+        <label for="nombre">Nombre:</label>
+        <input type="text" id="nombre" required /><br>
+
+        <label for="telefono">Teléfono:</label>
+        <input type="tel" id="telefono" required /><br>
+
+        <label for="fechaevento">Fecha:</label>
+        <input type="date" id="fechaevento" required /><br>
+
+        <label for="desde">Desde:</label>
+	<select id="desde" required></select><br>
+
+	<label for="hasta">Hasta:</label>
+	<select id="hasta" required></select><br>
+
+        <label for="tipoevento">Tipo de evento:</label>
+        <select id="tipoevento" required>
+          <option value="">-- Seleccione --</option>
+          <option value="cumpleaños">Cumpleaños</option>
+          <option value="casamiento">Casamiento</option>
+          <option value="bautismo">Bautismo</option>
+          <option value="aniversario">Aniversario</option>
+          <option value="corporativo">Evento corporativo</option>
+          <option value="quince">Quince años</option>
+          <option value="otro">Otro</option>
+        </select><br><br>
+
+        <button type="submit">Guardar Reserva</button>
+        <button type="button" id="cancelarBtn">Cancelar</button>
+      </form>
+    </div>
+
+    <!-- Tabla de reservas -->
+    <div id="loading">Cargando reservas...</div>
+    <table id="reservasTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Teléfono</th>
+          <th>Fecha</th>
+          <th>Horario</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody id="reservasBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    // 🔑 Configuración de Supabase
+    
+    const SUPABASE_URL = 'https://tpffbvtzaxzrckevtxei.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_uV6r9_VSg0SXy3o31oROsQ_g0BFPpBE';
+	
+
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let reservasCargadas = []; // ← nueva variable global
+    const ESTADOS = ['pendiente', 'confirmada', 'cancelada'];
+
+    // === Funciones principales ===
+    // === NUEVA FUNCIÓN: Llenar selects de hora (00:00 a 23:00) ===
+  	function llenarSelectHoras(selectId) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  
+  select.innerHTML = '<option value="">-- Hora --</option>';
+  
+  // 24 horas × 2 (por cada media hora) = 48 opciones
+  for (let i = 0; i < 48; i++) {
+    const totalMinutos = i * 30;           // 0, 30, 60, 90, ...
+    const horas = Math.floor(totalMinutos / 60) % 24; // 0 a 23
+    const minutos = totalMinutos % 60;     // 0 o 30
+    
+    const horaStr = String(horas).padStart(2, '0');
+    const minStr = String(minutos).padStart(2, '0');
+    const valor = `${horaStr}:${minStr}`;
+    
+    const option = document.createElement('option');
+    option.value = valor;
+    option.textContent = valor;
+    select.appendChild(option);
+  }
+}
+
+// Formatear fecha como YYYY-MM-DD
+function formatearFecha(fecha) {
+  const año = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0'); // getMonth() es 0-11
+  const dia = String(fecha.getDate()).padStart(2, '0');
+  return `${año}-${mes}-${dia}`;
+}
+
+    // Cargar y mostrar reservas
+    async function cargarReservas(fechaDesde = null, fechaHasta = null) {
+  	document.getElementById('loading').innerText = 'Cargando...';
+
+  	let query = supabaseClient
+    	.from('Reservas')
+    	.select('*');
+
+ 	 // Aplicar filtro si se proporcionan fechas
+  	if (fechaDesde) {
+    		query = query.gte('FechaEvento', fechaDesde); // >=
+  	}
+  	if (fechaHasta) {
+    		query = query.lte('FechaEvento', fechaHasta); // <=
+  	}
+
+  	query = query.order('FechaEvento', { ascending: true });
+
+  	const { data, error } = await query;
+
+
+      if (error) {
+        document.getElementById('loading').innerText = 'Error: ' + error.message;
+        return;
+      }
+      reservasCargadas = data; // ← ¡guardamos los datos!
+      const tbody = document.getElementById('reservasBody');
+      tbody.innerHTML = '';
+
+      data.forEach(reserva => {
+        const row = document.createElement('tr');
+        row.className = `estado ${reserva.Estado}`;
+
+        row.innerHTML = `
+          <td>${reserva.Nombre}</td>
+          <td>${reserva.Telefono}</td>
+          <td>${reserva.FechaEvento}</td>
+          <td>${reserva.Desde} - ${reserva.Hasta}</td>
+          <td>${reserva.TipoEvento}</td>
+          <td>
+            <select class="estado-select" data-id="${reserva.id}">
+              ${ESTADOS.map(e => 
+                `<option value="${e}" ${reserva.Estado === e ? 'selected' : ''}>${e}</option>`
+              ).join('')}
+            </select>
+          </td>
+          <td>
+            <button class="guardar-btn" data-id="${reserva.id}">Guardar</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('reservasTable').style.display = 'table';
+    }
+
+    // Guardar cambio de estado
+    document.addEventListener('click', async (e) => {
+      if (e.target.classList.contains('guardar-btn')) {
+        const id = e.target.getAttribute('data-id');
+        const select = document.querySelector(`.estado-select[data-id="${id}"]`);
+        const nuevoEstado = select.value;
+
+        const { error } = await supabaseClient
+          .from('Reservas')
+          .update({ Estado: nuevoEstado })
+          .eq('id', id);
+
+        if (error) {
+          alert('Error al actualizar: ' + error.message);
+        } else {
+          e.target.closest('tr').className = `estado ${nuevoEstado}`;
+          mostrarMensaje('Estado actualizado correctamente.');
+        }
+      }
+    });
+
+    // === Integración del formulario de nueva reserva ===
+
+    // Mostrar/ocultar formulario
+    document.getElementById('toggleFormBtn').addEventListener('click', () => {
+      const formSection = document.getElementById('nuevaReservaForm');
+      formSection.classList.toggle('visible');
+      document.getElementById('toggleFormBtn').textContent = 
+        formSection.classList.contains('visible') ? '❌ Cancelar' : '➕ Nueva Reserva';
+    });
+
+    // Cancelar formulario
+    document.getElementById('cancelarBtn').addEventListener('click', () => {
+      document.getElementById('nuevaReservaForm').classList.remove('visible');
+      document.getElementById('toggleFormBtn').textContent = '➕ Nueva Reserva';
+      document.getElementById('formularioNueva').reset();
+    });
+
+    // Enviar nueva reserva
+    document.getElementById('formularioNueva').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const nuevaReserva = {
+        Nombre: document.getElementById('nombre').value,
+        Telefono: document.getElementById('telefono').value,
+        FechaEvento: document.getElementById('fechaevento').value,
+        Desde: document.getElementById('desde').value,
+        Hasta: document.getElementById('hasta').value,
+        TipoEvento: document.getElementById('tipoevento').value,
+        Estado: 'pendiente'
+      };
+
+      const { error } = await supabaseClient
+        .from('Reservas')
+        .insert([nuevaReserva]);
+
+      if (error) {
+        alert('Error al guardar: ' + error.message);
+      } else {
+        mostrarMensaje('¡Reserva creada exitosamente!');
+        document.getElementById('formularioNueva').reset();
+        document.getElementById('nuevaReservaForm').classList.remove('visible');
+        document.getElementById('toggleFormBtn').textContent = '➕ Nueva Reserva';
+        cargarReservas(); // Recargar la tabla
+      }
+    });
+
+    // Mensaje temporal
+    function mostrarMensaje(texto) {
+      const msg = document.getElementById('mensajeGlobal');
+      msg.textContent = texto;
+      setTimeout(() => msg.textContent = '', 3000);
+    }
+
+    function mostrarEstadisticas() {
+  const total = reservasCargadas.length;
+  document.getElementById('totalReservas').textContent = total;
+
+  if (total === 0) {
+    document.getElementById('estadosStats').innerHTML = '<p>No hay reservas en este período.</p>';
+    document.getElementById('panelEstadisticas').style.display = 'block';
+    return;
+  }
+
+  // Contar por estado
+  const conteo = { pendiente: 0, confirmada: 0, cancelada: 0 };
+  reservasCargadas.forEach(r => {
+    if (conteo.hasOwnProperty(r.Estado)) {
+      conteo[r.Estado]++;
+    }
+  });
+
+  // Calcular porcentajes y generar HTML
+  let html = '<ul style="list-style:none; padding:0;">';
+  for (const [estado, cantidad] of Object.entries(conteo)) {
+    const porcentaje = total > 0 ? ((cantidad / total) * 100).toFixed(1) : 0;
+    const label = {
+      'pendiente': 'Pendientes',
+      'confirmada': 'Confirmadas',
+      'cancelada': 'Canceladas'
+    }[estado] || estado;
+
+    // Color según estado
+    const color = {
+      'pendiente': '#ffc107',
+      'confirmada': '#28a745',
+      'cancelada': '#dc3545'
+    }[estado] || '#6c757d';
+
+    html += `
+      <li style="margin:8px 0;">
+        <strong>${label}:</strong> ${cantidad} (${porcentaje}%)
+        <div style="width:100%; height:12px; background:#eee; border-radius:4px; margin-top:4px;">
+          <div style="width:${porcentaje}%; height:100%; background:${color}; border-radius:4px;"></div>
+        </div>
+      </li>
+    `;
+  }
+  html += '</ul>';
+
+  document.getElementById('estadosStats').innerHTML = html;
+  document.getElementById('panelEstadisticas').style.display = 'block';
+}
+
+
+
+
+
+	// Filtrar por rango de fechas
+document.getElementById('btnFiltrar').addEventListener('click', () => {
+  const desde = document.getElementById('filtroDesde').value;
+  const hasta = document.getElementById('filtroHasta').value;
+
+  if (!desde && !hasta) {
+    alert('Selecciona al menos una fecha.');
+    return;
+  }
+
+  // Si solo hay "desde", usar hasta hoy o dejar abierto
+  // Si solo hay "hasta", usar desde el inicio
+  cargarReservas(desde || undefined, hasta || undefined);
+});
+
+// Limpiar filtro
+document.getElementById('btnLimpiarFiltro').addEventListener('click', () => {
+  document.getElementById('filtroDesde').value = '';
+  document.getElementById('filtroHasta').value = '';
+  cargarReservas(); // Carga todas
+});
+    // Iniciar
+     document.addEventListener('DOMContentLoaded', () => {
+    // Llenar los selects de hora
+   // llenarSelectHoras('desde');
+   // llenarSelectHoras('hasta');
+  //  cargarReservas();
+    
+     // 🔹 Establecer fechas por defecto en el filtro
+  const hoy = new Date();
+  const hoyStr = formatearFecha(hoy);
+  
+  const dentroDeUnAño = new Date();
+  dentroDeUnAño.setDate(hoy.getDate() + 365);
+  const unAñoStr = formatearFecha(dentroDeUnAño);
+
+  document.getElementById('filtroDesde').value = hoyStr;
+  document.getElementById('filtroHasta').value = unAñoStr;
+
+  // Cargar reservas con el rango por defecto (próximo año)
+  cargarReservas(hoyStr, unAñoStr);	
+    
+  // Mostrar estadísticas
+document.getElementById('btnEstadisticas').addEventListener('click', () => {
+  mostrarEstadisticas();
+});
+
+    });
+  </script>
+</body>
+</html>
