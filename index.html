@@ -24,7 +24,7 @@
       display: none;
     }
     .form-section.visible { display: block; }
-    .estado.pendiente { background-color: #fff3cd; }
+    .estado.consulta { background-color: #fff3cd; }
     .estado.confirmada { background-color: #d4edda; }
     .estado.cancelada { background-color: #f8d7da; }
     label { display: inline-block; width: 150px; font-weight: bold; }
@@ -268,7 +268,7 @@ function formatearFecha(fecha) {
         Desde: document.getElementById('desde').value,
         Hasta: document.getElementById('hasta').value,
         TipoEvento: document.getElementById('tipoevento').value,
-        Estado: 'pendiente'
+        Estado: 'consulta'
       };
 
       const { error } = await supabaseClient
@@ -304,7 +304,7 @@ function formatearFecha(fecha) {
   }
 
   // Contar por estado
-  const conteo = { pendiente: 0, confirmada: 0, cancelada: 0 };
+  const conteo = { consulta: 0, confirmada: 0, cancelada: 0 };
   reservasCargadas.forEach(r => {
     if (conteo.hasOwnProperty(r.Estado)) {
       conteo[r.Estado]++;
@@ -316,14 +316,14 @@ function formatearFecha(fecha) {
   for (const [estado, cantidad] of Object.entries(conteo)) {
     const porcentaje = total > 0 ? ((cantidad / total) * 100).toFixed(1) : 0;
     const label = {
-      'pendiente': 'Pendientes',
-      'confirmada': 'Confirmadas',
-      'cancelada': 'Canceladas'
+      'consulta': 'Consulta',
+      'confirmada': 'Confirmada',
+      'cancelada': 'Cancelada'
     }[estado] || estado;
 
     // Color según estado
     const color = {
-      'pendiente': '#ffc107',
+      'consulta': '#ffc107',
       'confirmada': '#28a745',
       'cancelada': '#dc3545'
     }[estado] || '#6c757d';
@@ -371,9 +371,9 @@ document.getElementById('btnLimpiarFiltro').addEventListener('click', () => {
     // Iniciar
      document.addEventListener('DOMContentLoaded', () => {
     // Llenar los selects de hora
-   // llenarSelectHoras('desde');
-   // llenarSelectHoras('hasta');
-  //  cargarReservas();
+    llenarSelectHoras('desde');
+    llenarSelectHoras('hasta');
+    cargarReservas();
     
      // 🔹 Establecer fechas por defecto en el filtro
   const hoy = new Date();
