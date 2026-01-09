@@ -80,11 +80,14 @@
         <select id="tipoevento" required>
           <option value="">-- Seleccione --</option>
           <option value="cumpleaños">Cumpleaños</option>
+          <option value="baby shower">Cumpleaños</option>
+          <option value="quince">Quince años</option>
           <option value="casamiento">Casamiento</option>
           <option value="bautismo">Bautismo</option>
+          <option value="primera comunion">Bautismo</option>
           <option value="aniversario">Aniversario</option>
           <option value="corporativo">Evento corporativo</option>
-          <option value="quince">Quince años</option>
+          
           <option value="otro">Otro</option>
         </select><br><br>
 
@@ -124,7 +127,7 @@
     const { createClient } = supabase;
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     let reservasCargadas = []; // ← nueva variable global
-    const ESTADOS = ['pendiente', 'confirmada', 'cancelada'];
+    const ESTADOS = ['consulta', 'confirmada', 'cancelada'];
 
     // === Funciones principales ===
     // === NUEVA FUNCIÓN: Llenar selects de hora (00:00 a 23:00) ===
