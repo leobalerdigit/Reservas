@@ -172,52 +172,66 @@
     }
 
     async function cargarReservas(fechaDesde = null, fechaHasta = null) {
-      document.getElementById('loading').innerText = 'Cargando...';
-      let query = supabaseClient.from('Reservas').select('*,usuarios!inner (nombre_usuario)');
-      if (fechaDesde) query = query.gte('FechaEvento', fechaDesde);
-      if (fechaHasta) query = query.lte('FechaEvento', fechaHasta);
-      query = query.order('FechaEvento', { ascending: true });
-      const { data, error } = await query;
+  document.getElementById('loading').innerText = 'Cargando...';
+  let query = supabaseClient.from('Reservas').select('*,usuarios!inner(nombre_usuario)');
+  if (fechaDesde) query = query.gte('FechaEvento', fechaDesde);
+  if (fechaHasta) query = query.lte('FechaEvento', fechaHasta);
+  query = query.order('FechaEvento', { ascending: true });
+  const { data, error } = await query;
 
-      if (error) {
-        document.getElementById('loading').innerText = 'Error: ' + error.message;
-        return;
-      }
+  if (error) {
+    document.getElementById('loading').innerText = 'Error: ' + error.message;
+    return;
+  }
 
-      reservasCargadas = data;
-      const tbody = document.getElementById('reservasBody');
-      tbody.innerHTML = '';
+  reservasCargadas = data;
+  const tbody = document.getElementById('reservasBody');
+  tbody.innerHTML = '';
 
-      data.forEach(reserva => {
-        const row = document.createElement('tr');
-        row.className = `estado ${reserva.Estado}`;
-        const puedeEditar = reserva.usuario_id === usuarioLogueado.id;
-        const botonHTML = puedeEditar 
-          ? `<button class="guardar-btn" data-id="${reserva.id}">Guardar</button>`
-          : `<span title="Solo el creador puede editar">🔒</span>`;
+  data.forEach(reserva => {
+    const row = document.createElement('tr');
+    row.className = `estado ${reserva.Estado}`;
+    const puedeEditar = reserva.usuario_id === usuarioLogueado.id;
+    
+    // Botón de guardar estado
+    const botonEstadoHTML = puedeEditar 
+      ? `<button class="guardar-btn" data-id="${reserva.id}">Guardar</button>`
+      : `<span title="Solo el creador puede editar">🔒</span>`;
 
-        row.innerHTML = `
-          <td>${reserva.Nombre}</td>
-          <td>${reserva.Telefono}</td>
-          <td>${reserva.FechaEvento}</td>
-          <td>${reserva.Desde} - ${reserva.Hasta}</td>
-          <td>${reserva.TipoEvento}</td>
-          <td>
-            <select class="estado-select" data-id="${reserva.id}" ${puedeEditar ? '' : 'disabled'}>
-              ${ESTADOS.map(e => 
-                `<option value="${e}" ${reserva.Estado === e ? 'selected' : ''}>${e}</option>`
-              ).join('')}
-            </select>
-          </td>
-	  <td>${reserva.usuarios?.nombre_usuario || 'Sin usuario'}</td> <!-- ← NUEVO -->
-          <td>${botonHTML}</td>
-        `;
-        tbody.appendChild(row);
-      });
-
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('reservasTable').style.display = 'table';
+    // Enlace al PDF
+    let pdfHTML = '';
+    if (reserva.archivo_pdf) {
+      const pdfUrl = `${SUPABASE_URL}/storage/v1/object/public/reservas-pdf/${reserva.archivo_pdf}`;
+      pdfHTML = `<a href="${pdfUrl}" target="_blank" style="display:inline-block; padding:4px 8px; background:#007bff; color:white; text-decoration:none; border-radius:4px;">📄 Ver PDF</a>`;
+    } else {
+      pdfHTML = `<button class="subir-pdf-btn" data-id="${reserva.id}" ${puedeEditar ? '' : 'disabled'} style="padding:4px 8px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">📎 Subir PDF</button>`;
     }
+
+    row.innerHTML = `
+      <td>${reserva.Nombre}</td>
+      <td>${reserva.Telefono}</td>
+      <td>${reserva.FechaEvento}</td>
+      <td>${reserva.Desde} - ${reserva.Hasta}</td>
+      <td>${reserva.TipoEvento}</td>
+      <td>
+        <select class="estado-select" data-id="${reserva.id}" ${puedeEditar ? '' : 'disabled'}>
+          ${ESTADOS.map(e => 
+            `<option value="${e}" ${reserva.Estado === e ? 'selected' : ''}>${e}</option>`
+          ).join('')}
+        </select>
+      </td>
+      <td>${reserva.usuarios?.nombre_usuario || 'Sin usuario'}</td>
+      <td>
+        ${botonEstadoHTML}<br><br>
+        ${pdfHTML}
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('reservasTable').style.display = 'table';
+}
 
     // Guardar cambio de estado
     document.addEventListener('click', async (e) => {
@@ -239,6 +253,67 @@
         }
       }
     });
+
+
+    // Manejar subida de PDF
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('subir-pdf-btn')) {
+    const reservaId = e.target.getAttribute('data-id');
+    
+    // Crear input file dinámico
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      if (file.type !== 'application/pdf') {
+        alert('Por favor, selecciona un archivo PDF.');
+        return;
+      }
+      
+      // Nombre del archivo: reserva-{id}.pdf
+      const fileName = `reserva-${reservaId}.pdf`;
+      
+      try {
+        // Subir archivo a Storage
+        const { data, error } = await supabaseClient
+          .storage
+          .from('reservas-pdf')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: true // Sobrescribir si existe
+          });
+        
+        if (error) throw error;
+        
+        // Actualizar la reserva con la ruta del archivo
+        const { error: updateError } = await supabaseClient
+          .from('Reservas')
+          .update({ archivo_pdf: fileName })
+          .eq('id', reservaId);
+          
+        if (updateError) throw updateError;
+        
+        alert('PDF subido exitosamente.');
+        cargarReservas(
+          document.getElementById('filtroDesde').value || null,
+          document.getElementById('filtroHasta').value || null
+        );
+      } catch (error) {
+        console.error('Error al subir PDF:', error);
+        alert('Error al subir el PDF: ' + error.message);
+      }
+    };
+    
+    input.click();
+  }
+});	
+
+
+
+
 
     // === Integración del formulario de nueva reserva ===
     document.addEventListener('DOMContentLoaded', () => {
